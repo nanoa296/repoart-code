@@ -187,9 +187,13 @@ function main() {
     String.raw`(git\s+commit\s+--date=')([^']*)('\s+-m\s+')(` + FULL_2019.source + String.raw`)(')`,
     "g"
   );
+  let lastCommitUTC = null;
   input = input.replace(commitRe, (_, a, anyDate, b, msgDate, e) => {
     if (!remappedUTCs.has(msgDate)) remappedUTCs.set(msgDate, targetUTC(msgDate));
-    return a + fmtUTCNoon(remappedUTCs.get(msgDate)) + b + fmtUTCNoon(remappedUTCs.get(msgDate)) + e;
+    const mappedUTC = remappedUTCs.get(msgDate);
+    lastCommitUTC = mappedUTC;
+    const mappedStr = fmtUTCNoon(mappedUTC);
+    return a + mappedStr + b + mappedStr + e;
   });
 
   // Trim commits (and their preceding echo/git add) outside the rolling window
@@ -209,16 +213,22 @@ function main() {
   input = lines.filter((line, idx) => keep[idx]).join("\n");
   if (!input.endsWith("\n")) input += "\n";
 
-  input += [
-    "",
-    "cat <<'README' > README.md",
-    "# repoart",
-    "",
-    "This branch is generated automatically. Source code and automation live in [repoart-code](https://github.com/nanoa296/repoart-code).",
-    "",
-    "README",
-    ""
-  ].join("\n");
+  if (lastCommitUTC !== null) {
+    const lastCommitStr = fmtUTCNoon(lastCommitUTC);
+    input += [
+      "",
+      "cat <<'README' > README.md",
+      "# repoart",
+      "",
+      "This branch is generated automatically. Source code and automation live in [repoart-code](https://github.com/nanoa296/repoart-code).",
+      "",
+      "README",
+      "",
+      "git add README.md",
+      `GIT_AUTHOR_DATE='${lastCommitStr}' GIT_COMMITTER_DATE='${lastCommitStr}' git commit --amend --no-edit`,
+      ""
+    ].join("\n");
+  }
 
   process.stdout.write(input);
 }
