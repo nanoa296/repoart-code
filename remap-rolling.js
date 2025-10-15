@@ -161,13 +161,19 @@ function main() {
     );
   }
 
+  const remappedUTCs = new Map(); // original string -> target day UTC ms
+
   // Remapper: move by columns/rows; output noon-UTC string
-  function remapOne(fullStr) {
+  function targetUTC(fullStr) {
     const oldIdx = Math.floor((parseFullDayUTC(fullStr) - start2019) / 86400000);
     const { col, row } = toColRow(oldIdx);
     const newIdxFromWindow = fromColRow(col + shiftCols, row);     // >= 0 by construction
-    const newDayUTC = windowStartUTC + newIdxFromWindow * 86400000;
-    return fmtUTCNoon(newDayUTC);
+    return windowStartUTC + newIdxFromWindow * 86400000;
+  }
+
+  function remapOne(fullStr) {
+    if (!remappedUTCs.has(fullStr)) remappedUTCs.set(fullStr, targetUTC(fullStr));
+    return fmtUTCNoon(remappedUTCs.get(fullStr));
   }
 
   // Replace echo line dates
@@ -182,9 +188,26 @@ function main() {
     "g"
   );
   input = input.replace(commitRe, (_, a, anyDate, b, msgDate, e) => {
-    const mapped = remapOne(msgDate);
-    return a + mapped + b + mapped + e;
+    if (!remappedUTCs.has(msgDate)) remappedUTCs.set(msgDate, targetUTC(msgDate));
+    return a + fmtUTCNoon(remappedUTCs.get(msgDate)) + b + fmtUTCNoon(remappedUTCs.get(msgDate)) + e;
   });
+
+  // Trim commits (and their preceding echo/git add) outside the rolling window
+  const dayCutoff = windowStartUTC;
+  const lines = input.split("\n");
+  const keep = new Array(lines.length).fill(true);
+  for (let i = 0; i < lines.length; i++) {
+    const m = lines[i].match(/^git commit --date='([^']+)'/);
+    if (!m) continue;
+    const dateUTC = Date.parse(m[1]);
+    if (Number.isNaN(dateUTC) || dateUTC >= dayCutoff) continue;
+
+    keep[i] = false;
+    if (i - 1 >= 0 && /^git add /.test(lines[i - 1])) keep[i - 1] = false;
+    if (i - 2 >= 0 && /^echo /.test(lines[i - 2])) keep[i - 2] = false;
+  }
+  input = lines.filter((line, idx) => keep[idx]).join("\n");
+  if (!input.endsWith("\n")) input += "\n";
 
   process.stdout.write(input);
 }
