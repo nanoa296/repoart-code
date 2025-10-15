@@ -209,6 +209,17 @@ function main() {
   input = lines.filter((line, idx) => keep[idx]).join("\n");
   if (!input.endsWith("\n")) input += "\n";
 
+  input += [
+    "",
+    "cat <<'README' > README.md",
+    "# repoart",
+    "",
+    "This branch is generated automatically. Source code and automation live in [repoart-code](https://github.com/nanoa296/repoart-code).",
+    "",
+    "README",
+    ""
+  ].join("\n");
+
   process.stdout.write(input);
 }
 main();
