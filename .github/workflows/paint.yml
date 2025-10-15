@@ -1,0 +1,64 @@
+name: Paint Profile (Rolling)
+
+on:
+  schedule:
+    - cron: "15 8 * * *" # daily, 08:15 UTC (early US morning)
+  workflow_dispatch: {}
+
+jobs:
+  paint:
+    runs-on: ubuntu-latest
+    env:
+      TARGET_REPO: nanoa296/repoart
+    steps:
+      - name: Checkout automation repo
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Preflight
+        run: |
+          test -n "${{ secrets.USER_NAME }}" || (echo "Missing USER_NAME" && exit 1)
+          test -n "${{ secrets.USER_EMAIL }}" || (echo "Missing USER_EMAIL" && exit 1)
+          test -n "${{ secrets.GH_PAT }}"     || (echo "Missing GH_PAT" && exit 1)
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Generate rolling script (UTC-safe)
+        run: |
+          node ./remap-rolling.js --align=right ./template.sh > /tmp/paint.sh
+          chmod +x /tmp/paint.sh
+
+      - name: Checkout art repository
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ env.TARGET_REPO }}
+          path: art-repo
+          fetch-depth: 0
+          token: ${{ secrets.GH_PAT }}
+
+      - name: Create/overwrite art branch with backdated commits
+        working-directory: art-repo
+        env:
+          USER_NAME: ${{ secrets.USER_NAME }}
+          USER_EMAIL: ${{ secrets.USER_EMAIL }}
+          GH_PAT: ${{ secrets.GH_PAT }}
+        run: |
+          git config user.name  "$USER_NAME"
+          git config user.email "$USER_EMAIL"
+          git remote set-url origin https://${GH_PAT}@github.com/${TARGET_REPO}.git
+
+          # create a fresh orphan branch so history is rewritten cleanly
+          TMP_BRANCH=paint-tmp
+          git checkout --orphan "$TMP_BRANCH"
+          git rm -rf . || true
+
+          # paint into a minimal tree (just foobar.txt)
+          /tmp/paint.sh
+
+          # rename and push the rewritten art-rolling branch only
+          git branch -M art-rolling
+          git push -f origin art-rolling
