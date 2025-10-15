@@ -8,8 +8,9 @@
  * - Uses 53 visible weeks (GitHub’s profile grid width)
  * - Emits all commit dates as 12:00:00 GMT+0000 (UTC) to avoid DST shearing
  * - Alignment: 'left' | 'center' | 'right'  (default 'left', override with --align flag)
+ * - Optional column nudging via --offset=<int> (positive = left, negative = right)
  *
- * Usage: node remap-rolling.js [--align=left|center|right] template.sh > paint.sh
+ * Usage: node remap-rolling.js [--align=left|center|right] [--offset=int] template.sh > paint.sh
  */
 
 const fs = require("fs");
@@ -51,10 +52,17 @@ const toColRow   = i => ({ col: Math.floor(i / 7), row: i % 7 });
 const fromColRow = (c, r) => c * 7 + r;
 
 function parseArgs(argv) {
-  const args = { align: "left" };
+  const args = { align: "left", offset: 0 };
   for (const arg of argv.slice(2)) {
     if (arg.startsWith("--align=")) {
       args.align = arg.slice("--align=".length).toLowerCase();
+    } else if (arg.startsWith("--offset=")) {
+      const val = Number(arg.slice("--offset=".length));
+      if (!Number.isInteger(val)) {
+        console.error("Offset must be an integer number of columns.");
+        process.exit(2);
+      }
+      args.offset = val;
     } else if (!args.template) {
       args.template = arg;
     }
@@ -63,9 +71,9 @@ function parseArgs(argv) {
 }
 
 function main() {
-  const { template: path, align } = parseArgs(process.argv);
+  const { template: path, align, offset } = parseArgs(process.argv);
   if (!path) {
-    console.error("Usage: node remap-rolling.js [--align=left|center|right] template.sh > paint.sh");
+    console.error("Usage: node remap-rolling.js [--align=left|center|right] [--offset=int] template.sh > paint.sh");
     process.exit(2);
   }
   if (!["left", "center", "right"].includes(align)) {
@@ -133,6 +141,9 @@ function main() {
     // 'center' — center columns within the 53-week window
     shiftCols = Math.floor((GRID_WEEKS - width) / 2) - minCol;
   }
+
+  // Optional additional nudge: positive offset shifts left
+  shiftCols -= offset;
 
   // Clamp inside [0 .. rightmostCol]
   shiftCols = Math.max(shiftCols, -minCol);
