@@ -2,7 +2,7 @@ name: Paint Profile (Rolling)
 
 on:
   schedule:
-    - cron: "15 8 * * 1" # Mondays, 08:15 UTC
+    - cron: "15 8 * * *" # daily, 08:15 UTC (early US morning)
   workflow_dispatch: {}
 
 jobs:
